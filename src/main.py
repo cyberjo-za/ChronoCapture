@@ -18,6 +18,10 @@ DEFAULT_QUALITY = "Medium"
 QUALITY_MAP = {"Low": 30, "Medium": 50, "High": 85}
 CONFIG_FILE = "config.ini"
 
+# --- Path Constants ---
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ICON_PATH = os.path.join(SCRIPT_DIR, "icon.ico")
+
 # --- Folder Setup ---
 TEMP_DIR = "temp_screenshots"
 ARCHIVE_DIR = "archives"
@@ -33,33 +37,56 @@ class PositionedAskString(simpledialog.Dialog):
         self.prompt = prompt
         self.initialvalue = initialvalue
         super().__init__(parent, title=title, **kwargs)
+        try:
+            # Set the dialog icon to match the main application
+            self.iconbitmap(ICON_PATH)
+        except tk.TclError:
+            # Fail silently if icon is not found for the dialog
+            pass
 
     def body(self, master):
         self.label = ttk.Label(master, text=self.prompt, justify=tk.LEFT)
         self.label.pack(padx=5, pady=5)
-        self.entry = ttk.Entry(master, name="entry")
+
+        # Use a Text widget for multi-line input
+        self.text = tk.Text(master, width=50, height=5, wrap=tk.WORD, undo=True)
         if self.initialvalue:
-            self.entry.insert(0, self.initialvalue)
-            self.entry.select_range(0, tk.END)
-        self.entry.pack(padx=5, pady=5, fill=tk.X, expand=True)
-        
+            self.text.insert("1.0", self.initialvalue)
+        self.text.pack(padx=5, pady=5, fill=tk.BOTH, expand=True)
+
         # Position the window
         self.parent.update_idletasks()
-        width = self.winfo_reqwidth()
-        height = self.winfo_reqheight()
+        # Set a more reasonable default size for the dialog
+        width = 400
+        height = 200
         x = max(0, self.parent.winfo_pointerx() - (width // 2))
         y = max(0, self.parent.winfo_pointery() - (height // 2))
-        self.geometry(f"+{x}+{y}")
+        self.geometry(f"{width}x{height}+{x}+{y}")
 
-        return self.entry # set initial focus
+        return self.text # set initial focus
 
     def apply(self):
         """Set the result to the entry's content when OK is pressed."""
-        self.result = self.entry.get()
+        # Get content from the Text widget, stripping trailing newline
+        self.result = self.text.get("1.0", "end-1c")
 
     def buttonbox(self):
-        super().buttonbox()
-        self.bind("<Return>", lambda event: self.ok())
+        # Overriding the buttonbox to get a handle on the frame
+        self.button_frame = ttk.Frame(self)
+
+        ok_button = ttk.Button(self.button_frame, text="OK", width=10, command=self.ok, default=tk.ACTIVE)
+        ok_button.pack(side=tk.RIGHT, padx=5, pady=5)
+
+        # Add a hint for the new keybinding
+        hint_label = ttk.Label(self.button_frame, text="Press Ctrl+Enter to submit")
+        hint_label.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+
+        self.button_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # Allow Enter for newlines in the Text widget.
+        # Use Ctrl+Enter to accept/ok the dialog.
+        self.bind("<Control-Return>", lambda event: self.ok())
+
 
 class ScreenshotApp:
     def __init__(self, root):
@@ -309,7 +336,7 @@ class ScreenshotApp:
 
     def toggle_pause(self):
         if self.capture_state == "running":
-            comment = self._get_comment("Pause Session", "Intermission")
+            comment = self._get_comment("Pause Session", "Pausing to take note or a break.")
             if comment is None: return # User cancelled
 
             self.status_text.set("🗜️ Archiving before pause...")
@@ -321,7 +348,7 @@ class ScreenshotApp:
             self.time_log.append(("Pause", datetime.now(), comment))
             self.status_text.set("⏸️ Capture paused.")
         elif self.capture_state == "paused":
-            comment = self._get_comment("Resume Session", "Continuing work")
+            comment = self._get_comment("Resume Session", "Continuing work. Note: ")
             if comment is None: return # User cancelled
 
             self.update_ui_state("running")
@@ -421,7 +448,8 @@ class ScreenshotApp:
         ts_format = f"{start_dt.strftime('%Y-%m-%d-%H%M')}-{end_dt.strftime('%H%M')}"
         # Sanitize comment for filename
         safe_comment = "".join(c for c in last_action_comment if c.isalnum() or c in ('_','-')).rstrip()
-        zip_filename = f"{safe_comment}_{ts_format}.zip"
+        truncated_comment = safe_comment[:20]
+        zip_filename = f"{ts_format}_{truncated_comment}.zip"
         zip_filepath = os.path.join(ARCHIVE_DIR, zip_filename)
         self.session_archives.append(zip_filepath)
 
@@ -579,4 +607,9 @@ class ScreenshotApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = ScreenshotApp(root)
+    try:
+        # Set the application icon
+        root.iconbitmap(ICON_PATH)
+    except tk.TclError:
+        print(f"Warning: Icon file not found at '{ICON_PATH}'. Skipping icon setting.")
     root.mainloop()
